@@ -6,7 +6,11 @@ load_dotenv()
 
 client = OpenAI(
     api_key=os.getenv("OPENROUTER_API_KEY"),
-    base_url="https://openrouter.ai/api/v1"
+    base_url="https://openrouter.ai/api/v1",
+    default_headers={
+        "HTTP-Referer": "http://localhost",
+        "X-Title": "RAG-App"
+    }
 )
 MODEL = "openai/gpt-oss-120b:free"
 

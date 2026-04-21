@@ -1,61 +1,56 @@
-import fitz
-import docx
+import streamlit as st
+from parser import extract_text, chunk_text
+from vector_store import VectorStore
+from ai import answer_question
 
+st.set_page_config(
+    page_title="AI Document Analyzer",
+    page_icon="📄",
+    layout="wide"
+)
 
-def chunk_text(text, chunk_size=1000, overlap=200):
-    chunks = []
-    start = 0
-    chunk_id = 0
+st.title("📄 AI Document Analyzer (RAG v2)")
 
-    while start < len(text):
-        chunk = text[start:start + chunk_size]
+uploaded_files = st.file_uploader(
+    "Nahraj dokumenty",
+    type=["txt", "pdf", "docx"],
+    accept_multiple_files=True
+)
 
-        chunks.append({
-            "text": chunk,
-            "chunk_id": chunk_id
-        })
+question = st.text_input("Polož otázku k dokumentům")
 
-        chunk_id += 1
-        start += chunk_size - overlap
+# persistent store v session
+if "vector_store" not in st.session_state:
+    st.session_state.vector_store = VectorStore()
 
-    return chunks
+if st.button("📥 Indexovat dokumenty"):
 
+    if not uploaded_files:
+        st.warning("Nahraj soubory")
+        st.stop()
 
-# PDF
-def extract_text_from_pdf(uploaded_file):
-    uploaded_file.seek(0)
-    pdf_bytes = uploaded_file.read()
+    store = st.session_state.vector_store
+    store.index.reset()
+    store.items = []
 
-    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-        return "\n".join(page.get_text() for page in doc)
+    with st.spinner("Indexuji dokumenty..."):
 
+        for file in uploaded_files:
+            text = extract_text(file)
+            chunks = chunk_text(text)
 
-# TXT
-def extract_text_from_txt(uploaded_file):
-    uploaded_file.seek(0)
-    return uploaded_file.read().decode("utf-8")
+            store.add_documents(chunks, file.name)
 
+    st.success("Dokumenty indexovány")
 
-# DOCX
-def extract_text_from_docx(uploaded_file):
-    uploaded_file.seek(0)
-    doc = docx.Document(uploaded_file)
-    return "\n".join([para.text for para in doc.paragraphs])
+if st.button("🤖 Zeptat se"):
 
+    if not question:
+        st.warning("Zadej otázku")
+        st.stop()
 
-def extract_text(uploaded_file):
-    file_type = uploaded_file.type
+    with st.spinner("Hledám odpověď..."):
+        result = answer_question(st.session_state.vector_store, question)
 
-    if file_type == "application/pdf":
-        return extract_text_from_pdf(uploaded_file)
-
-    elif file_type == "text/plain":
-        return extract_text_from_txt(uploaded_file)
-
-    elif file_type in [
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    ]:
-        return extract_text_from_docx(uploaded_file)
-
-    else:
-        raise ValueError(f"Nepodporovaný formát: {file_type}")
+    st.subheader("Odpověď")
+    st.write(result)
